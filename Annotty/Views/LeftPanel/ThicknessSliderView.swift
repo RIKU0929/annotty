@@ -1,12 +1,12 @@
 import SwiftUI
 
 /// Vertical slider for brush thickness with logarithmic scale
-/// Range: 1-100 pixels (in mask coordinates)
+/// Range: 0.5-100 pixels (in mask coordinates)
 struct ThicknessSliderView: View {
     @Binding var radius: Float
 
     /// Minimum radius
-    static let minRadius: Float = 1
+    static let minRadius: Float = 0.5
 
     /// Maximum radius
     static let maxRadius: Float = 100
