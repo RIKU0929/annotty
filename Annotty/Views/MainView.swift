@@ -173,6 +173,11 @@ struct LeftPanelView: View {
         return nil
     }
 
+    /// Brush size label that preserves sub-pixel values below 1.
+    private var brushSizeText: String {
+        brushRadius < 1 ? String(format: "%.1f", brushRadius) : "\(Int(brushRadius))"
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             // Paint/Erase toggle
@@ -223,7 +228,7 @@ struct LeftPanelView: View {
             .animation(.easeOut(duration: 0.1), value: previewSize)
 
             // Brush size number
-            Text("\(Int(brushRadius))")
+            Text(brushSizeText)
                 .font(.caption)
                 .foregroundColor(.white)
 
