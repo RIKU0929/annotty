@@ -12,6 +12,8 @@ struct ExportSheetView: View {
     @State private var exportComplete = false
     @State private var showingShareSheet = false
     @State private var exportedURLs: [URL] = []
+    @State private var showingErrorAlert = false
+    @State private var exportErrorMessage = ""
 
     var body: some View {
         NavigationView {
@@ -99,6 +101,11 @@ struct ExportSheetView: View {
                     ShareSheet(items: exportedURLs)
                 }
             }
+            .alert("Export Failed", isPresented: $showingErrorAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(exportErrorMessage)
+            }
         }
     }
 
@@ -107,26 +114,56 @@ struct ExportSheetView: View {
     }
 
     private func performExport() {
+        exportComplete = false
+        exportedURLs = []
+        exportErrorMessage = ""
         isExporting = true
 
-        // Simulate export (actual implementation in Phase 5)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        var formats = Set<ExportFormat>()
+        if exportPNG { formats.insert(.png) }
+        if exportCOCO { formats.insert(.coco) }
+        if exportYOLO { formats.insert(.yolo) }
+
+        do {
+            let snapshot = try viewModel.makeCurrentExportSnapshot(formats: formats)
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let urls = try ExportService.shared.export(
+                        masks: snapshot.masks,
+                        classes: snapshot.classes,
+                        imageURL: snapshot.imageURL,
+                        imageSize: snapshot.imageSize,
+                        scaleFactor: snapshot.scaleFactor,
+                        formats: snapshot.formats
+                    )
+                    let existingURLs = urls.filter { FileManager.default.fileExists(atPath: $0.path) }
+
+                    DispatchQueue.main.async {
+                        isExporting = false
+                        exportedURLs = existingURLs
+                        exportComplete = !existingURLs.isEmpty
+
+                        if existingURLs.isEmpty {
+                            exportErrorMessage = "Export finished, but no files were created."
+                            showingErrorAlert = true
+                        }
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        isExporting = false
+                        exportComplete = false
+                        exportedURLs = []
+                        exportErrorMessage = error.localizedDescription
+                        showingErrorAlert = true
+                    }
+                }
+            }
+        } catch {
             isExporting = false
-            exportComplete = true
-
-            // Create dummy URLs for now
-            let tempDir = FileManager.default.temporaryDirectory
+            exportComplete = false
             exportedURLs = []
-
-            if exportPNG {
-                exportedURLs.append(tempDir.appendingPathComponent("mask.png"))
-            }
-            if exportCOCO {
-                exportedURLs.append(tempDir.appendingPathComponent("annotation.json"))
-            }
-            if exportYOLO {
-                exportedURLs.append(tempDir.appendingPathComponent("annotation.txt"))
-            }
+            exportErrorMessage = error.localizedDescription
+            showingErrorAlert = true
         }
     }
 }

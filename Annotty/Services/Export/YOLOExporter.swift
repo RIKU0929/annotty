@@ -39,18 +39,26 @@ class YOLOExporter {
                 // Scale to image coordinates
                 let scaled = ContourExtractor.scaleContour(simplified, scaleFactor: scaleFactor)
 
-                // Normalize to 0-1 range
-                let normalized = scaled.map { point -> String in
+                // Normalize to 0-1 range and discard invalid points.
+                let normalized = scaled.compactMap { point -> String? in
                     let x = Double(point.x) / imageWidth
                     let y = Double(point.y) / imageHeight
-                    // Clamp to valid range
-                    let clampedX = max(0, min(1, x))
-                    let clampedY = max(0, min(1, y))
+                    guard x.isFinite, y.isFinite else { return nil }
+
+                    // Clamp to valid range.
+                    let clampedX = max(0.0, min(1.0, x))
+                    let clampedY = max(0.0, min(1.0, y))
                     return String(format: "%.6f %.6f", clampedX, clampedY)
                 }
 
+                guard normalized.count >= 3 else { continue }
+
                 // Format: class_id x1 y1 x2 y2 ... xn yn
-                let line = "\(classID) " + normalized.joined(separator: " ")
+                // Annotty class IDs are 1-based; Ultralytics YOLO class IDs are 0-based.
+                let yoloClassID = classID - 1
+                guard yoloClassID >= 0 else { continue }
+
+                let line = "\(yoloClassID) " + normalized.joined(separator: " ")
                 lines.append(line)
             }
         }

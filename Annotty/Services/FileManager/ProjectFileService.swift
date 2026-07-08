@@ -106,7 +106,7 @@ class ProjectFileService {
             throw ProjectFileError.invalidPath
         }
 
-        try imageData.write(to: annotationURL)
+        try imageData.write(to: annotationURL, options: .atomic)
     }
 
     /// Load annotation PNG data
@@ -143,7 +143,7 @@ class ProjectFileService {
             throw ProjectFileError.invalidPath
         }
 
-        try data.write(to: labelURL)
+        try data.write(to: labelURL, options: .atomic)
     }
 
     // MARK: - Delete Single Image

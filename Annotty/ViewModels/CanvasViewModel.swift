@@ -2,6 +2,37 @@ import SwiftUI
 import Combine
 import simd
 
+/// Immutable data captured from the current canvas for export.
+struct AnnotationExportSnapshot {
+    let masks: [Int: InternalMask]
+    let classes: [MaskClass]
+    let imageURL: URL
+    let imageSize: CGSize
+    let scaleFactor: Float
+    let formats: Set<ExportFormat>
+}
+
+/// User-facing export failures.
+enum AnnotationExportError: LocalizedError {
+    case noImageLoaded
+    case maskReadFailed
+    case invalidMaskDimensions
+    case emptyAnnotation
+
+    var errorDescription: String? {
+        switch self {
+        case .noImageLoaded:
+            return "No image is loaded. Please import or select an image before exporting."
+        case .maskReadFailed:
+            return "Could not read the current annotation mask."
+        case .invalidMaskDimensions:
+            return "The current annotation mask has invalid dimensions."
+        case .emptyAnnotation:
+            return "There is no annotation to export. Please draw an annotation first."
+        }
+    }
+}
+
 /// Main state coordinator for the canvas
 /// Manages drawing state, image navigation, and coordinates with Metal renderer
 class CanvasViewModel: ObservableObject {
@@ -1218,6 +1249,95 @@ class CanvasViewModel: ObservableObject {
 
     // MARK: - Save
 
+    /// Export the currently visible annotation using a main-thread GPU snapshot.
+    func exportCurrentAnnotation(formats: Set<ExportFormat>) throws -> [URL] {
+        let snapshot = try makeCurrentExportSnapshot(formats: formats)
+
+        return try ExportService.shared.export(
+            masks: snapshot.masks,
+            classes: snapshot.classes,
+            imageURL: snapshot.imageURL,
+            imageSize: snapshot.imageSize,
+            scaleFactor: snapshot.scaleFactor,
+            formats: snapshot.formats
+        )
+    }
+
+    /// Capture the current GPU mask and convert the combined 0...8 class-ID mask
+    /// into per-class binary masks expected by the exporters.
+    func makeCurrentExportSnapshot(formats: Set<ExportFormat>) throws -> AnnotationExportSnapshot {
+        guard let imageItem = imageManager.currentItem else {
+            throw AnnotationExportError.noImageLoaded
+        }
+
+        guard let textureManager = renderer?.textureManager else {
+            throw AnnotationExportError.noImageLoaded
+        }
+
+        guard textureManager.imageSize.width > 0, textureManager.imageSize.height > 0 else {
+            throw AnnotationExportError.noImageLoaded
+        }
+
+        guard let combinedMask = textureManager.readMask() else {
+            throw AnnotationExportError.maskReadFailed
+        }
+
+        guard combinedMask.contains(where: { $0 != 0 }) else {
+            throw AnnotationExportError.emptyAnnotation
+        }
+
+        let maskWidth = Int(textureManager.maskSize.width)
+        let maskHeight = Int(textureManager.maskSize.height)
+        guard maskWidth > 0, maskHeight > 0, combinedMask.count == maskWidth * maskHeight else {
+            throw AnnotationExportError.invalidMaskDimensions
+        }
+
+        var masks: [Int: InternalMask] = [:]
+        for classID in 1...MaskClass.maxClasses {
+            let classValue = UInt8(classID)
+            var binaryMask = [UInt8](repeating: 0, count: combinedMask.count)
+            var hasPixels = false
+
+            for index in combinedMask.indices where combinedMask[index] == classValue {
+                binaryMask[index] = 1
+                hasPixels = true
+            }
+
+            if hasPixels {
+                masks[classID] = InternalMask(
+                    data: binaryMask,
+                    width: maskWidth,
+                    height: maskHeight,
+                    classID: classID,
+                    scaleFactor: textureManager.maskScaleFactor
+                )
+            }
+        }
+
+        guard !masks.isEmpty else {
+            throw AnnotationExportError.emptyAnnotation
+        }
+
+        let classes = (1...MaskClass.maxClasses).map { classID in
+            let color = Self.classColors[classID - 1]
+            let customName = classNames[classID - 1].trimmingCharacters(in: .whitespacesAndNewlines)
+            return MaskClass(
+                id: classID,
+                originalColor: color,
+                name: customName.isEmpty ? "Class \(classID)" : customName
+            )
+        }
+
+        return AnnotationExportSnapshot(
+            masks: masks,
+            classes: classes,
+            imageURL: imageItem.url,
+            imageSize: textureManager.imageSize,
+            scaleFactor: textureManager.maskScaleFactor,
+            formats: formats
+        )
+    }
+
     /// Save current annotation (called on image navigation and app background)
     func saveBeforeBackground() {
         saveCurrentAnnotation()
@@ -2248,5 +2368,3 @@ class CanvasViewModel: ObservableObject {
     }
 
 }
-
-
