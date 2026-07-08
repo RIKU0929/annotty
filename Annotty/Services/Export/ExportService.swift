@@ -53,9 +53,9 @@ class ExportService {
                 scaleFactor: scaleFactor
             )
 
-            for (filename, data) in pngData {
+            for (_, data) in pngData {
                 if let url = projectService.getLabelURL(for: imageURL, format: .png) {
-                    try data.write(to: url)
+                    try data.write(to: url, options: .atomic)
                     exportedURLs.append(url)
                 }
             }
@@ -71,7 +71,7 @@ class ExportService {
                 scaleFactor: scaleFactor
             ) {
                 if let url = projectService.getLabelURL(for: imageURL, format: .coco) {
-                    try cocoData.write(to: url)
+                    try cocoData.write(to: url, options: .atomic)
                     exportedURLs.append(url)
                 }
             }
@@ -86,7 +86,7 @@ class ExportService {
                 scaleFactor: scaleFactor
             ) {
                 if let url = projectService.getLabelURL(for: imageURL, format: .yolo) {
-                    try yoloData.write(to: url)
+                    try yoloData.write(to: url, options: .atomic)
                     exportedURLs.append(url)
                 }
             }
