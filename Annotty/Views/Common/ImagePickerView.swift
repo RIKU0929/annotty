@@ -12,7 +12,7 @@ struct ImagePickerView: View {
 
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var showingImagePicker = false
-    @State private var showingFolderPicker = false
+    @State private var showingMultiImagePicker = false
     @State private var showingProjectPicker = false
 
     var body: some View {
@@ -73,12 +73,12 @@ struct ImagePickerView: View {
                     .cornerRadius(12)
                 }
 
-                // Folder
-                Button(action: { showingFolderPicker = true }) {
+                // Multiple images from Files
+                Button(action: { showingMultiImagePicker = true }) {
                     HStack {
-                        Image(systemName: "folder.badge.plus")
+                        Image(systemName: "doc.on.doc")
                             .font(.title2)
-                        Text("Folder (Multiple Images)")
+                        Text("Multiple Images from Files")
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -120,9 +120,9 @@ struct ImagePickerView: View {
                 handleImageImport(url)
             }
         }
-        .sheet(isPresented: $showingFolderPicker) {
-            FolderPickerView { url in
-                onFolderSelected(url)
+        .sheet(isPresented: $showingMultiImagePicker) {
+            MultiImageDocumentPickerView { urls in
+                onImagesSelected(urls)
                 dismiss()
             }
         }
@@ -212,6 +212,50 @@ struct DocumentPickerView: UIViewControllerRepresentable {
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
             guard let url = urls.first else { return }
             onPicked(url)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {}
+    }
+}
+
+struct MultiImageDocumentPickerView: UIViewControllerRepresentable {
+    let onImagesSelected: ([URL]) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image])
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = true
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onImagesSelected: onImagesSelected)
+    }
+
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onImagesSelected: ([URL]) -> Void
+
+        init(onImagesSelected: @escaping ([URL]) -> Void) {
+            self.onImagesSelected = onImagesSelected
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard !urls.isEmpty else { return }
+
+            let accessedURLs = urls.map { url in
+                (url: url, didStartAccessing: url.startAccessingSecurityScopedResource())
+            }
+            defer {
+                accessedURLs.forEach { accessedURL in
+                    if accessedURL.didStartAccessing {
+                        accessedURL.url.stopAccessingSecurityScopedResource()
+                    }
+                }
+            }
+
+            onImagesSelected(urls)
         }
 
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {}
