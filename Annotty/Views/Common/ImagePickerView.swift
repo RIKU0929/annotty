@@ -121,13 +121,13 @@ struct ImagePickerView: View {
             }
         }
         .sheet(isPresented: $showingFolderPicker) {
-            DocumentPickerView(contentTypes: [.folder]) { url in
+            FolderPickerView { url in
                 onFolderSelected(url)
                 dismiss()
             }
         }
         .sheet(isPresented: $showingProjectPicker) {
-            DocumentPickerView(contentTypes: [.folder]) { url in
+            FolderPickerView { url in
                 onProjectSelected(url)
                 dismiss()
             }
@@ -212,6 +212,53 @@ struct DocumentPickerView: UIViewControllerRepresentable {
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
             guard let url = urls.first else { return }
             onPicked(url)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {}
+    }
+}
+
+struct FolderPickerView: UIViewControllerRepresentable {
+    let onPicked: (URL) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder])
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPicked: onPicked)
+    }
+
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPicked: (URL) -> Void
+
+        init(onPicked: @escaping (URL) -> Void) {
+            self.onPicked = onPicked
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else { return }
+
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccessing { url.stopAccessingSecurityScopedResource() }
+            }
+
+            do {
+                let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
+                if resourceValues.isDirectory == true {
+                    onPicked(url)
+                } else {
+                    print("[FolderPicker] Expected a folder, but received a file URL: \(url)")
+                }
+            } catch {
+                print("[FolderPicker] Failed to verify selected URL is a directory: \(error)")
+            }
         }
 
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {}
